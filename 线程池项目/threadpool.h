@@ -6,6 +6,7 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <unordered_map>
 #include <functional>
 
 // 可以接受任意数据类型的类型
@@ -129,15 +130,19 @@ enum class PoolMode // C++11
 class Thread
 {
 public:
-	using ThreadFunc = std::function<void()>;
+	using ThreadFunc = std::function<void(int)>;
 	
 	Thread(ThreadFunc func);
 	~Thread();
 
 	// 启动线程
 	void start();
+
+	int getId() const;
 private:
 	ThreadFunc func_;
+	static int generateId_; 
+	int threadId_; // 保存线程对象的id,不是指系统给的线程号
 };
 
 class ThreadPool
@@ -150,13 +155,16 @@ public:
 	void setMode(PoolMode mode);
 
 	// 设置task任务队列上限阈值
-	void settaskQueMaxThreadhold(int threshhold);
+	void setTaskQueMaxThreadhold(int threshhold);
+
+	// 设置线程池cached模式下线程的上限阈值
+	void setThreadSizeThreadhold(int threshhold);
 
 	// 给线程池提交任务
 	Result submitTask(std::shared_ptr<Task> sp);
 
 	// 开启线程池
-	void start(int initThreadSize = 4);
+	void start(int initThreadSize = std::thread::hardware_concurrency());
 
 	// 禁止拷贝构造和赋值
 	ThreadPool(const ThreadPool&) = delete;
@@ -164,22 +172,32 @@ public:
 
 private:
 	// 定义线程函数
-	void threadFunc();
+	void threadFunc(int threadid);
+
+	// 检查pool的运行状态
+	bool checkRunningState() const;
 
 private:
-	std::vector<std::unique_ptr<Thread>> threads_; // 线程列表
+	//std::vector<std::unique_ptr<Thread>> threads_; // 线程列表
+	// 建立线程的id和线程对象指针的映射，方便查询
+	std::unordered_map<int, std::unique_ptr<Thread>> threads_; // 线程列表
 	size_t initThreadSize_; //初始线程数量
+	int threadSizeThreshHold_; // 线程数量上限（cached模式使用）
+	std::atomic_int curThreadSize_;  // 记录当前线程池里面线程的总数量（cached模式使用）
+	std::atomic_int idleThreadSize_; // 记录空闲线程的数量（cached模式使用）
 
 	// 任务队列
 	std::queue<std::shared_ptr<Task>> taskQue_; // 任务队列
 	std::atomic_int taskSize_; // 任务的数量 ？
-	int taskQueMaxThreadhold_; // 任务队列数量上限阈值
+	int taskQueMaxThreshHold_; // 任务队列数量上限阈值
 	
 	std::mutex taskQueMtx_; // 保证任务队列的线程安全
 	std::condition_variable notFull_; // 表示任务队列不满
 	std::condition_variable notEmpty_; // 表示任务队列不空
+	std::condition_variable exitCond_; // 等到线程资源全部回收
 
 	PoolMode poolMode_; // 线程池模式
+	std::atomic_bool isPoolRunning_; // 线程池运行状态
 };
 #endif
 

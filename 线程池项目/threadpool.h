@@ -5,6 +5,7 @@
 #include <memory>
 #include <atomic>
 #include <mutex>
+#include <thread>
 #include <condition_variable>
 #include <unordered_map>
 #include <functional>
@@ -62,6 +63,7 @@ public:
 	Semaphore(int limit = 0)
 		:resLimit_(limit)
 	{}
+	~Semaphore() = default;
 	// 获取一个信号量资源
 	void wait()
 	{
